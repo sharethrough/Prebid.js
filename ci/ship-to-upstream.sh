@@ -64,7 +64,7 @@ fi
 echo "==> Minting GitHub App installation token"
 
 # Write the PEM key to a temp file; handle both real newlines and literal \n.
-TMPKEY=$(mktemp /tmp/gh-app-key.XXXXXX.pem)
+TMPKEY=$(mktemp /tmp/gh-app-key.XXXXXX)
 trap 'rm -f "${TMPKEY}"' EXIT
 
 printf '%s' "${GH_APP_PRIVATE_KEY}" > "${TMPKEY}"
