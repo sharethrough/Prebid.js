@@ -1,7 +1,7 @@
 stages:
   - ship-upstream
 
-# ── Ship merged branch to sharethrough/Prebid.js and open/update a PR ───────
+# ── Push merged branch to sharethrough/Prebid.js ────────────────────────────
 #
 # Runs only when a commit lands on github-sharethrough-prebidjs (i.e. after an
 # MR is merged).  The job is skipped when the MR carries the "no-upstream"
@@ -29,7 +29,7 @@ test-gh-token:
       [ -n "${GH_APP_PRIVATE_KEY:-}" ] && echo "GH_APP_PRIVATE_KEY: present" || { echo "GH_APP_PRIVATE_KEY: MISSING"; exit 1; }
 
       echo "--- Minting JWT ---"
-      TMPKEY=$(mktemp /tmp/gh-key.XXXXXX.pem)
+      TMPKEY=$(mktemp /tmp/gh-key.XXXXXX)
       trap 'rm -f "$TMPKEY"' EXIT
       printf '%s' "$GH_APP_PRIVATE_KEY" > "$TMPKEY"
       grep -q '^-----' "$TMPKEY" || sed -i 's/\\n/\n/g' "$TMPKEY"

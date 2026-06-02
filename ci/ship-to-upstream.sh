@@ -3,8 +3,8 @@
 #
 # Triggered on every push to github-sharethrough-prebidjs (i.e. after an MR is
 # merged).  Finds the MR that produced the merge commit, and — unless the MR
-# carries the "no-upstream" label — pushes the branch to sharethrough/Prebid.js
-# and opens (or updates) a PR against prebid/Prebid.js.
+# carries the "no-upstream" label — pushes the source branch to
+# sharethrough/Prebid.js.
 #
 # Required env vars (supplied by GitLab CI):
 #   CI_COMMIT_SHA        – merge commit SHA
@@ -16,14 +16,12 @@
 # Optional env vars:
 #   GITLAB_API_URL       – defaults to https://gitlab.com/api/v4
 #   GITHUB_API_URL       – defaults to https://api.github.com
-#   UPSTREAM_REPO        – target upstream repo, defaults to prebid/Prebid.js
 #   FORK_REPO            – sharethrough fork, defaults to sharethrough/Prebid.js
 
 set -euo pipefail
 
 GITLAB_API_URL="${GITLAB_API_URL:-https://gitlab.com/api/v4}"
 GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
-UPSTREAM_REPO="${UPSTREAM_REPO:-prebid/Prebid.js}"
 FORK_REPO="${FORK_REPO:-sharethrough/Prebid.js}"
 FORK_ORG="${FORK_REPO%%/*}"
 
@@ -43,9 +41,8 @@ if [ -z "${MR_JSON}" ] || [ "${MR_JSON}" = "null" ]; then
 fi
 
 SOURCE_BRANCH=$(echo "${MR_JSON}" | jq -r '.source_branch')
-MR_TITLE=$(echo "${MR_JSON}"     | jq -r '.title')
-MR_DESCRIPTION=$(echo "${MR_JSON}" | jq -r '.description // ""')
 MR_IID=$(echo "${MR_JSON}"       | jq -r '.iid')
+MR_TITLE=$(echo "${MR_JSON}"     | jq -r '.title')
 LABELS=$(echo "${MR_JSON}"       | jq -r '[.labels[]] | join(",")')
 
 echo "    MR !${MR_IID}: ${MR_TITLE}"
@@ -64,7 +61,7 @@ fi
 echo "==> Minting GitHub App installation token"
 
 # Write the PEM key to a temp file; handle both real newlines and literal \n.
-TMPKEY=$(mktemp /tmp/gh-app-key.XXXXXX.pem)
+TMPKEY=$(mktemp /tmp/gh-app-key.XXXXXX)
 trap 'rm -f "${TMPKEY}"' EXIT
 
 printf '%s' "${GH_APP_PRIVATE_KEY}" > "${TMPKEY}"
@@ -126,43 +123,6 @@ git push github-fork \
   "HEAD:refs/heads/${SOURCE_BRANCH}" \
   --force-with-lease
 
-echo "    Branch pushed"
-
-# ── 5. Open or update a PR on prebid/Prebid.js ──────────────────────────────
-
-echo "==> Checking for existing PR on ${UPSTREAM_REPO}"
-
-EXISTING_PR_NUMBER=$(curl -sf \
-  -H "Authorization: Bearer ${GH_TOKEN}" \
-  -H "Accept: application/vnd.github+json" \
-  "${GITHUB_API_URL}/repos/${UPSTREAM_REPO}/pulls?head=${FORK_ORG}:${SOURCE_BRANCH}&base=master&state=open" \
-  | jq -r '.[0].number // empty')
-
-if [ -n "${EXISTING_PR_NUMBER}" ]; then
-  echo "==> PR #${EXISTING_PR_NUMBER} already open — branch push updated it automatically"
-else
-  echo "==> Opening new PR on ${UPSTREAM_REPO}"
-
-  GITLAB_MR_URL="${CI_SERVER_URL:-https://gitlab.com}/${CI_PROJECT_PATH:-}/-/merge_requests/${MR_IID}"
-
-  PR_BODY="${MR_DESCRIPTION}
-
----
-*Auto-opened by GitLab CI · source MR: ${GITLAB_MR_URL}*"
-
-  RESPONSE=$(curl -sf -X POST \
-    -H "Authorization: Bearer ${GH_TOKEN}" \
-    -H "Accept: application/vnd.github+json" \
-    "${GITHUB_API_URL}/repos/${UPSTREAM_REPO}/pulls" \
-    -d "$(jq -n \
-          --arg title "${MR_TITLE}" \
-          --arg body  "${PR_BODY}" \
-          --arg head  "${FORK_ORG}:${SOURCE_BRANCH}" \
-          --arg base  "master" \
-          '{"title":$title,"body":$body,"head":$head,"base":$base}')")
-
-  PR_URL=$(echo "${RESPONSE}" | jq -r '.html_url')
-  echo "==> PR opened: ${PR_URL}"
-fi
+echo "    Branch pushed to ${FORK_REPO}/${SOURCE_BRANCH}"
 
 echo "==> Done"
