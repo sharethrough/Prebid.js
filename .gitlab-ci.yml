@@ -1,7 +1,7 @@
 stages:
   - ship-upstream
 
-# ── Ship merged branch to sharethrough/Prebid.js and open/update a PR ───────
+# ── Push merged branch to sharethrough/Prebid.js ────────────────────────────
 #
 # Runs only when a commit lands on github-sharethrough-prebidjs (i.e. after an
 # MR is merged).  The job is skipped when the MR carries the "no-upstream"
