@@ -11,46 +11,6 @@ stages:
 #   GH_APP_ID          – GitHub App numeric ID
 #   GH_APP_PRIVATE_KEY – GitHub App private key (RSA PEM, newlines as \n or real)
 #
-# ── Temporary token-validation job — remove after verifying WR-2017 ─────────
-test-gh-token:
-  stage: ship-upstream
-  image: alpine:3.20
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "github-sharethrough-prebidjs"'
-      when: manual
-  before_script:
-    - apk add --no-cache bash curl jq openssl
-  script:
-    - |
-      set -euo pipefail
-
-      echo "--- Checking variables ---"
-      [ -n "${GH_APP_ID:-}"          ] && echo "GH_APP_ID: present"          || { echo "GH_APP_ID: MISSING"; exit 1; }
-      [ -n "${GH_APP_PRIVATE_KEY:-}" ] && echo "GH_APP_PRIVATE_KEY: present" || { echo "GH_APP_PRIVATE_KEY: MISSING"; exit 1; }
-
-      echo "--- Minting JWT ---"
-      TMPKEY=$(mktemp /tmp/gh-key.XXXXXX)
-      trap 'rm -f "$TMPKEY"' EXIT
-      printf '%s' "$GH_APP_PRIVATE_KEY" > "$TMPKEY"
-      grep -q '^-----' "$TMPKEY" || sed -i 's/\\n/\n/g' "$TMPKEY"
-      chmod 600 "$TMPKEY"
-
-      _b64url() { base64 -w 0 | tr '+/' '-_' | tr -d '='; }
-      NOW=$(date +%s)
-      H=$(printf '{"alg":"RS256","typ":"JWT"}'                                             | _b64url)
-      P=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "$GH_APP_ID" | _b64url)
-      SIG=$(printf '%s' "$H.$P" | openssl dgst -sha256 -sign "$TMPKEY" -binary | _b64url)
-      JWT="$H.$P.$SIG"
-      echo "JWT minted OK"
-
-      echo "--- Calling GitHub App API ---"
-      RESULT=$(curl -sf \
-        -H "Authorization: Bearer $JWT" \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/app")
-      echo "App name : $(echo "$RESULT" | jq -r '.name')"
-      echo "App ID   : $(echo "$RESULT" | jq -r '.id')"
-      echo "--- All checks passed ---"
 
 ship-to-upstream:
   stage: ship-upstream
