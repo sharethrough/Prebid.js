@@ -139,6 +139,10 @@ else
     || git remote set-url prebid-upstream "https://github.com/prebid/Prebid.js.git"
   git fetch prebid-upstream master --depth=1
 
+  # Cherry-pick requires a git identity in the CI environment.
+  git config --global user.email "ci-bot@sharethrough.com"
+  git config --global user.name "Sharethrough CI"
+
   # Cherry-pick MR commits onto prebid master — no CI files in the result.
   TEMP_BRANCH="ship-$$"
   git checkout -b "${TEMP_BRANCH}" prebid-upstream/master
