@@ -125,4 +125,32 @@ git push github-fork \
 
 echo "    Branch pushed to ${FORK_REPO}/${SOURCE_BRANCH}"
 
+# ── 5. Open a PR on sharethrough/Prebid.js ──────────────────────────────────
+
+echo "==> Opening PR on ${FORK_REPO}"
+
+DEFAULT_BRANCH=$(curl -sf \
+  -H "Authorization: Bearer ${GH_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "${GITHUB_API_URL}/repos/${FORK_REPO}" \
+  | jq -r '.default_branch')
+
+PR_URL=$(curl -sf -X POST \
+  -H "Authorization: Bearer ${GH_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "${GITHUB_API_URL}/repos/${FORK_REPO}/pulls" \
+  --data "$(jq -n \
+    --arg title "${MR_TITLE}" \
+    --arg head  "${SOURCE_BRANCH}" \
+    --arg base  "${DEFAULT_BRANCH}" \
+    --arg body  "GitLab MR !${MR_IID}: ${MR_TITLE}" \
+    '{title: $title, head: $head, base: $base, body: $body}')" \
+  | jq -r '.html_url')
+
+if [ -z "${PR_URL}" ] || [ "${PR_URL}" = "null" ]; then
+  echo "    WARNING: PR may already exist or could not be created"
+else
+  echo "    PR opened: ${PR_URL}"
+fi
+
 echo "==> Done"
