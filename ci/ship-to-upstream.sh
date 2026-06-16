@@ -110,18 +110,52 @@ GH_TOKEN=$(curl -sf -X POST \
 echo "    Installation ID : ${INSTALLATION_ID}"
 echo "    Token obtained  : yes"
 
-# ── 4. Push the merged branch to sharethrough/Prebid.js ─────────────────────
+# ── 4. Push only MR commits (no CI files) to sharethrough/Prebid.js ─────────
+#
+# Feature branches are based on github-sharethrough-prebidjs which carries
+# .gitlab-ci.yml and ci/ — files that must not go to the public GitHub fork.
+# Strategy: identify the two parents of the merge commit, cherry-pick the
+# MR-specific commits (PARENT1..PARENT2) onto a fresh copy of
+# prebid/Prebid.js master, then push that instead of the full branch.
 
-echo "==> Pushing ${SOURCE_BRANCH} to ${FORK_REPO}"
+echo "==> Pushing ${SOURCE_BRANCH} to ${FORK_REPO} (CI files excluded)"
+
+# Identify the two parents of the merge commit.
+PARENTS=$(git log --pretty=format:"%P" -1 "${CI_COMMIT_SHA}")
+PARENT1=$(echo "${PARENTS}" | awk '{print $1}')   # previous tip of target branch
+PARENT2=$(echo "${PARENTS}" | awk '{print $2}')   # tip of source branch (MR head)
 
 git remote add github-fork \
   "https://x-access-token:${GH_TOKEN}@github.com/${FORK_REPO}.git" 2>/dev/null \
   || git remote set-url github-fork \
        "https://x-access-token:${GH_TOKEN}@github.com/${FORK_REPO}.git"
 
-git push github-fork \
-  "HEAD:refs/heads/${SOURCE_BRANCH}" \
-  --force-with-lease
+if [ -z "${PARENT2}" ]; then
+  echo "    Not a merge commit — pushing full branch as-is"
+  git push github-fork "HEAD:refs/heads/${SOURCE_BRANCH}" --force
+else
+  # Fetch only the tip of prebid/Prebid.js master (shallow, fast).
+  git remote add prebid-upstream "https://github.com/prebid/Prebid.js.git" 2>/dev/null \
+    || git remote set-url prebid-upstream "https://github.com/prebid/Prebid.js.git"
+  git fetch prebid-upstream master --depth=1
+
+  # Cherry-pick MR commits onto prebid master — no CI files in the result.
+  TEMP_BRANCH="ship-$$"
+  git checkout -b "${TEMP_BRANCH}" prebid-upstream/master
+
+  if git cherry-pick "${PARENT1}..${PARENT2}" --allow-empty; then
+    echo "    Cherry-pick succeeded — pushing without CI files"
+    git push github-fork "${TEMP_BRANCH}:refs/heads/${SOURCE_BRANCH}" --force
+  else
+    echo "    Cherry-pick had conflicts — falling back to full push"
+    git cherry-pick --abort 2>/dev/null || true
+    git checkout -
+    git push github-fork "HEAD:refs/heads/${SOURCE_BRANCH}" --force
+  fi
+
+  git checkout - 2>/dev/null || true
+  git branch -D "${TEMP_BRANCH}" 2>/dev/null || true
+fi
 
 echo "    Branch pushed to ${FORK_REPO}/${SOURCE_BRANCH}"
 
