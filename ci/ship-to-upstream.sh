@@ -115,8 +115,9 @@ echo "    Token obtained  : yes"
 # Feature branches are based on github-sharethrough-prebidjs which carries
 # .gitlab-ci.yml and ci/ — files that must not go to the public GitHub fork.
 # Strategy: identify the two parents of the merge commit, cherry-pick the
-# MR-specific commits (PARENT1..PARENT2) onto a fresh copy of
-# prebid/Prebid.js master, then push that instead of the full branch.
+# MR-specific commits (PARENT1..PARENT2) onto sharethrough/Prebid.js master
+# (the fork's own master, not prebid upstream — avoids showing commits the
+# fork hasn't synced yet), then push that instead of the full branch.
 
 echo "==> Pushing ${SOURCE_BRANCH} to ${FORK_REPO} (CI files excluded)"
 
@@ -134,18 +135,17 @@ if [ -z "${PARENT2}" ]; then
   echo "    Not a merge commit — pushing full branch as-is"
   git push github-fork "HEAD:refs/heads/${SOURCE_BRANCH}" --force
 else
-  # Fetch only the tip of prebid/Prebid.js master (shallow, fast).
-  git remote add prebid-upstream "https://github.com/prebid/Prebid.js.git" 2>/dev/null \
-    || git remote set-url prebid-upstream "https://github.com/prebid/Prebid.js.git"
-  git fetch prebid-upstream master --depth=1
+  # Fetch the fork's own master as the base — PR diff will then show only our
+  # cherry-picked commits, regardless of how far behind the fork is from upstream.
+  git fetch github-fork master --depth=1
 
   # Cherry-pick requires a git identity in the CI environment.
   git config --global user.email "ci-bot@sharethrough.com"
   git config --global user.name "Sharethrough CI"
 
-  # Cherry-pick MR commits onto prebid master — no CI files in the result.
+  # Cherry-pick MR commits onto the fork's master — no CI files in the result.
   TEMP_BRANCH="ship-$$"
-  git checkout -b "${TEMP_BRANCH}" prebid-upstream/master
+  git checkout -b "${TEMP_BRANCH}" github-fork/master
 
   if git cherry-pick "${PARENT1}..${PARENT2}" --allow-empty; then
     echo "    Cherry-pick succeeded — pushing without CI files"
