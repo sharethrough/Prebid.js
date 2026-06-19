@@ -1,5 +1,6 @@
 stages:
   - ship-upstream
+  - sync-upstream
 
 # ── Push merged branch to sharethrough/Prebid.js ────────────────────────────
 #
@@ -25,3 +26,35 @@ ship-to-upstream:
     - apk add --no-cache bash git curl jq openssl
   script:
     - bash ci/ship-to-upstream.sh
+
+# ── Sync prebid/Prebid.js master into github-sharethrough-prebidjs ──────────
+#
+# Keeps the long-lived branch tracking upstream (the source of truth) so that
+# new MRs and the shipped GitHub PRs show small diffs.  Merges upstream into
+# the branch, preserving the branch-only files (ci/, .gitlab-ci.yml, equativ
+# adapter).  Fails without pushing on a merge conflict — resolve by hand.
+#
+# Trigger:
+#   • automatically on a scheduled pipeline (Settings → CI/CD → Schedules,
+#     target branch github-sharethrough-prebidjs)
+#   • manually via Pipelines → Run pipeline (web), then play the job
+#
+# Required CI/CD variable (masked):
+#   GITLAB_PUSH_TOKEN – project/group access token (or PAT) with
+#                       write_repository, allowed to push to the protected
+#                       github-sharethrough-prebidjs branch.
+
+sync-from-upstream:
+  stage: sync-upstream
+  image: alpine:3.20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+  variables:
+    GIT_STRATEGY: fetch
+    GIT_DEPTH: 0       # full history required to compute the merge
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - bash ci/sync-upstream.sh
